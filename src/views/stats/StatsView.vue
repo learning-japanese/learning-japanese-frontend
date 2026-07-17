@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useStats } from '@/api'
+import { useStats } from '@/requests/stats'
 
 const { data: stats } = useStats()
 </script>

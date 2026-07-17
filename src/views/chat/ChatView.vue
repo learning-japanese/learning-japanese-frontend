@@ -1,26 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useSendMessage } from '@/requests/chat'
 
 const messages = ref<{ role: 'user' | 'assistant'; text: string }[]>([
   { role: 'assistant', text: 'こんにちは！今日は何を勉強したい？' },
 ])
 
 const input = ref('')
-const isLoading = ref(false)
+const { mutateAsync: sendMsg, isPending } = useSendMessage()
 
-function sendMessage() {
+async function sendMessage() {
   if (!input.value.trim()) return
   messages.value.push({ role: 'user', text: input.value })
   input.value = ''
-  isLoading.value = true
 
-  setTimeout(() => {
-    messages.value.push({
-      role: 'assistant',
-      text: 'えっと… いいね！続けて勉強しようね〜',
-    })
-    isLoading.value = false
-  }, 1000)
+  const { reply } = await sendMsg(messages.value)
+  messages.value.push({ role: 'assistant', text: reply })
 }
 </script>
 
@@ -44,7 +39,7 @@ function sendMessage() {
           {{ msg.text }}
         </div>
       </div>
-      <div v-if="isLoading" class="flex justify-start">
+      <div v-if="isPending" class="flex justify-start">
         <div class="rounded-2xl rounded-bl-md bg-pink-100 px-4 py-2 text-sm dark:bg-pink-950/40">
           ちょっと待ってね…
         </div>

@@ -1,7 +1,9 @@
 import { http, HttpResponse } from 'msw'
 
+const v1 = 'http://localhost:5173/api/v1'
+
 export const handlers = [
-  http.get('/api/profile', () =>
+  http.get(`${v1}/profile`, () =>
     HttpResponse.json({
       id: '1',
       name: 'Изучающий',
@@ -12,7 +14,7 @@ export const handlers = [
     }),
   ),
 
-  http.post('/api/session/start', () =>
+  http.post(`${v1}/session/start`, () =>
     HttpResponse.json({
       id: 'session-1',
       startedAt: new Date().toISOString(),
@@ -23,8 +25,7 @@ export const handlers = [
           prompt: 'Как читается あ?',
           options: ['a', 'i', 'u', 'e'],
           correctAnswer: 'a',
-          explanation:
-            'あ — это хирагана для звука "a". Базовая гласная.',
+          explanation: 'あ — это хирагана для звука "a". Базовая гласная.',
         },
         {
           id: 'task-2',
@@ -39,8 +40,7 @@ export const handlers = [
           prompt: 'Какие из этих символов — хирагана?',
           options: ['あ', 'ア', 'い', 'イ'],
           correctAnswer: 'あ,い',
-          explanation:
-            'あ и い — хирагана. ア и イ — катакана.',
+          explanation: 'あ и い — хирагана. ア и イ — катакана.',
         },
         {
           id: 'task-4',
@@ -54,7 +54,7 @@ export const handlers = [
     }),
   ),
 
-  http.post('/api/session/:id/submit', () =>
+  http.post(`${v1}/session/:id/submit`, () =>
     HttpResponse.json({
       results: [
         { taskId: 'task-1', correct: true, explanation: 'Верно! あ = a' },
@@ -64,15 +64,17 @@ export const handlers = [
           explanation: 'ka = か. Ты написал(а) неверно.',
         },
       ],
-      sessionSummary: {
-        correct: 1,
-        total: 2,
-        accuracy: 50,
-      },
+      sessionSummary: { correct: 1, total: 2, accuracy: 50 },
     }),
   ),
 
-  http.get('/api/stats', () =>
+  http.post(`${v1}/chat`, () =>
+    HttpResponse.json({
+      reply: 'えっと… すごいね！その調子で頑張ってね〜',
+    }),
+  ),
+
+  http.get(`${v1}/stats`, () =>
     HttpResponse.json({
       labels: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'],
       accuracy: [60, 75, 80, 65, 90, 85, 70],

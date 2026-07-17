@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { useProfile, useStartSession } from '@/api'
+import { useProfile } from '@/requests/profile'
+import { useStartSession } from '@/requests/session'
 import { useRouter } from 'vue-router'
 
 const { data: profile } = useProfile()
