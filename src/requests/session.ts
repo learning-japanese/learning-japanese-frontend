@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/vue-query'
 export function useStartSession() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: startSession,
+    mutationFn: (body?: { groupId?: string }) => startSession(body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile'] })
     },

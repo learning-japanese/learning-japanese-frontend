@@ -15,15 +15,8 @@ export interface Session {
 }
 
 export type TaskType =
-  | 'choice'
-  | 'multiple'
-  | 'typing'
-  | 'translation'
-  | 'gapfill'
-  | 'drag'
-  | 'draw'
-  | 'picture_choice'
-  | 'conversation'
+  | 'choice' | 'multiple' | 'typing' | 'translation'
+  | 'gapfill' | 'drag' | 'draw' | 'picture_choice' | 'conversation'
 
 export interface Task {
   id: string
@@ -45,18 +38,15 @@ export interface DailyStats {
 }
 
 export interface VocabWord {
-  id: string
-  kanji: string
-  kana: string
-  meaning: string
-  knowledge: number
+  id: string; kanji: string; kana: string; meaning: string; knowledge: number
 }
 
 export interface VocabResponse {
-  words: VocabWord[]
-  total: number
-  page: number
-  totalPages: number
+  words: VocabWord[]; total: number; page: number; totalPages: number
+}
+
+export interface TaskGroup {
+  id: string; name: string; description: string; taskCount: number
 }
 
 export type IncorrectAction = 'show_answer' | 'show_hint' | 'nothing'
@@ -69,4 +59,25 @@ export interface UserSettings {
   maxRetries: number
   aiCanOverride: boolean
   drawMatchThreshold: number
+  shuffleTasks: boolean
+}
+
+export interface SavedSession {
+  sessionId: string
+  tasks: Task[]
+  currentIdx: number
+  history: number[]
+  retries: Record<string, number>
+  handledLocked: Task[]
+  shuffleTasks: boolean
+}
+
+export interface DashboardSummary {
+  todayMinutes: number
+  todayTasks: number
+  todayAccuracy: number
+  streakDays: number
+  hasActiveSession: boolean
+  hiragana: number
+  katakana: number
 }

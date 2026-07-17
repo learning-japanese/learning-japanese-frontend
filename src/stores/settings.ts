@@ -12,18 +12,15 @@ export const useSettingsStore = defineStore('settings', () => {
     maxRetries: 3,
     aiCanOverride: true,
     drawMatchThreshold: 70,
+    shuffleTasks: false,
   }
   const state = ref<UserSettings>(
     saved ? { ...defaults, ...JSON.parse(saved) } : { ...defaults },
   )
 
-  watch(
-    state,
-    (val) => {
-      localStorage.setItem('settings', JSON.stringify(val))
-    },
-    { deep: true },
-  )
+  watch(state, (val) => {
+    localStorage.setItem('settings', JSON.stringify(val))
+  }, { deep: true })
 
   function set<K extends keyof UserSettings>(key: K, value: UserSettings[K]) {
     state.value[key] = value
