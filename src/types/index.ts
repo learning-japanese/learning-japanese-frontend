@@ -14,21 +14,33 @@ export interface Session {
   mood?: string
 }
 
+export type TaskType =
+  | 'choice'
+  | 'multiple'
+  | 'typing'
+  | 'translation'
+  | 'gapfill'
+  | 'drag'
+  | 'draw'
+  | 'picture_choice'
+
 export interface Task {
   id: string
-  type: 'choice' | 'multiple' | 'typing' | 'translation'
+  type: TaskType
   prompt: string
   options?: string[]
+  slots?: string[]
   correctAnswer: string
   hint?: string
   explanation?: string
+  skipped: number
 }
 
 export interface DailyStats {
-  date: string
-  minutesStudied: number
-  tasksCompleted: number
-  accuracy: number
+  labels: string[]
+  accuracy: number[]
+  minutes: number[]
+  tasksPerDay: number[]
 }
 
 export type IncorrectAction = 'show_answer' | 'show_hint' | 'nothing'

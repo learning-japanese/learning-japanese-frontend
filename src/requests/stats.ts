@@ -3,7 +3,7 @@ import { getStats } from '@/apis/stats'
 import type { DailyStats } from '@/types'
 
 export function useStats() {
-  return useQuery<DailyStats[]>({
+  return useQuery<DailyStats>({
     queryKey: ['stats'],
     queryFn: getStats,
   })
