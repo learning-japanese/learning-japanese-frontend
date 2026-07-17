@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettingsStore } from '@/stores/settings'
 import type { Task } from '@/types'
@@ -11,7 +11,6 @@ import DrawTask from '@/components/tasks/DrawTask.vue'
 
 const router = useRouter()
 const settings = useSettingsStore()
-const drawRef = ref<InstanceType<typeof DrawTask> | null>(null)
 
 const { mutateAsync: startSession, isPending } = useStartSession()
 const queue = ref<Task[]>([])
@@ -20,7 +19,6 @@ const answered = ref(false)
 const isCorrect = ref(false)
 const retries = reactive<Record<string, number>>({})
 const sessionsCompleted = ref(0)
-const canSkip = ref(false)
 const history = ref<number[]>([])
 
 async function start() {
@@ -28,7 +26,6 @@ async function start() {
   queue.value = [...session.tasks]
   currentIdx.value = 0
   answered.value = false
-  canSkip.value = false
 }
 
 const currentTask = () => queue.value[currentIdx.value]
@@ -39,13 +36,16 @@ const selectedMultiple = ref<string[]>([])
 function checkAnswer(): boolean {
   const task = currentTask()
   if (!task) return false
-
   if (task.type === 'draw') return true
 
   let userAns: string
   if (task.type === 'multiple') {
     userAns = [...selectedMultiple.value].sort().join(',')
-  } else if (task.type === 'choice' || task.type === 'gapfill' || task.type === 'picture_choice') {
+  } else if (
+    task.type === 'choice' ||
+    task.type === 'gapfill' ||
+    task.type === 'picture_choice'
+  ) {
     userAns = answer.value
   } else {
     userAns = answer.value.trim().toLowerCase()
@@ -83,10 +83,6 @@ function submitAnswer() {
   if (!isCorrect.value && task) {
     retries[task.id] = (retries[task.id] ?? 0) + 1
   }
-
-  if (isCorrect.value) {
-    canSkip.value = true
-  }
 }
 
 function nextTask() {
@@ -98,8 +94,7 @@ function nextTask() {
   history.value.push(currentIdx.value)
 
   if (!isCorrect.value) {
-    const id = task.id
-    if ((retries[id] ?? 0) >= settings.state.maxRetries) {
+    if ((retries[task.id] ?? 0) >= settings.state.maxRetries) {
       handledLockedTasks.value.push(task)
     } else {
       queue.value.push({ ...task })
@@ -113,22 +108,14 @@ function nextTask() {
   }
 }
 
-function skipTask() {
-  const task = currentTask()
-  if (!task || !canSkip.value) return
-  task.skipped = (task.skipped ?? 0) + 1
-  history.value.push(currentIdx.value)
-  const skipped = { ...task }
-  queue.value.push(skipped)
+function prevTask() {
+  if (history.value.length === 0) return
+  const prev = history.value.pop()
+  if (prev == null) return
+  currentIdx.value = prev
   answered.value = false
   answer.value = ''
   selectedMultiple.value = []
-  currentIdx.value++
-
-  if (currentIdx.value >= queue.value.length) {
-    sessionsCompleted.value++
-    queue.value = []
-  }
 }
 
 function handleDragSubmit(value: string) {
@@ -141,16 +128,6 @@ function handleDragSubmit(value: string) {
   }
 }
 
-function prevTask() {
-  if (history.value.length === 0) return
-  const prev = history.value.pop()
-  if (prev == null) return
-  currentIdx.value = prev
-  answered.value = false
-  answer.value = ''
-  selectedMultiple.value = []
-}
-
 const handledLockedTasks = ref<Task[]>([])
 
 function resetAll() {
@@ -159,7 +136,6 @@ function resetAll() {
   currentIdx.value = 0
   answered.value = false
   history.value = []
-  canSkip.value = false
   for (const key of Object.keys(retries)) delete retries[key]
   handledLockedTasks.value = []
 }
@@ -169,11 +145,6 @@ const showAnswer = computed(
     settings.state.incorrectAction === 'show_answer' ||
     (settings.state.incorrectAction === 'show_hint' && !currentTask()?.hint),
 )
-
-const skipDisabled = computed(() => {
-  const task = currentTask()
-  return !canSkip.value || (task?.skipped ?? 0) >= 3
-})
 
 const prevDisabled = computed(() => history.value.length === 0)
 </script>
@@ -210,7 +181,6 @@ const prevDisabled = computed(() => history.value.length === 0)
 
     <!-- Active task -->
     <template v-if="queue.length > 0">
-      <!-- Progress + prompt -->
       <div class="text-center">
         <p class="text-xs text-gray-400">{{ currentIdx + 1 }} / {{ queue.length }}</p>
         <p class="mt-1 text-xl font-bold">{{ currentTask()?.prompt }}</p>
@@ -363,7 +333,7 @@ const prevDisabled = computed(() => history.value.length === 0)
         </button>
       </div>
 
-      <!-- Feedback -->
+      <!-- Feedback + Nav -->
       <div v-if="answered" class="space-y-3">
         <div
           class="rounded-xl p-3 text-sm"
@@ -382,30 +352,21 @@ const prevDisabled = computed(() => history.value.length === 0)
           </p>
         </div>
 
-        <button
-          @click="nextTask"
-          class="w-full rounded-xl bg-pink-500 py-3 font-bold text-white"
-        >
-          {{ currentIdx < queue.length - 1 ? 'Далее →' : 'Завершить' }}
-        </button>
-      </div>
-
-      <!-- Navigation -->
-      <div v-if="queue.length > 0" class="flex gap-2 pt-2">
-        <button
-          :disabled="prevDisabled"
-          @click="prevTask"
-          class="flex-1 rounded-xl border-2 border-pink-200 py-3 text-sm font-medium transition-all disabled:opacity-30 dark:border-pink-900"
-        >
-          ← Назад
-        </button>
-        <button
-          :disabled="skipDisabled"
-          @click="skipTask"
-          class="flex-1 rounded-xl border-2 border-pink-200 py-3 text-sm font-medium transition-all disabled:opacity-30 dark:border-pink-900"
-        >
-          Пропустить →
-        </button>
+        <div class="flex gap-2">
+          <button
+            :disabled="prevDisabled"
+            @click="prevTask"
+            class="flex-1 rounded-xl border-2 border-pink-200 py-3 font-medium transition-all disabled:opacity-30 dark:border-pink-900"
+          >
+            ← Назад
+          </button>
+          <button
+            @click="nextTask"
+            class="flex-1 rounded-xl bg-pink-500 py-3 font-bold text-white"
+          >
+            {{ currentIdx < queue.length - 1 ? 'Далее →' : 'Завершить' }}
+          </button>
+        </div>
       </div>
     </template>
   </div>

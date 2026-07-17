@@ -23,6 +23,7 @@ export type TaskType =
   | 'drag'
   | 'draw'
   | 'picture_choice'
+  | 'conversation'
 
 export interface Task {
   id: string
@@ -43,6 +44,21 @@ export interface DailyStats {
   tasksPerDay: number[]
 }
 
+export interface VocabWord {
+  id: string
+  kanji: string
+  kana: string
+  meaning: string
+  knowledge: number
+}
+
+export interface VocabResponse {
+  words: VocabWord[]
+  total: number
+  page: number
+  totalPages: number
+}
+
 export type IncorrectAction = 'show_answer' | 'show_hint' | 'nothing'
 
 export interface UserSettings {
@@ -52,4 +68,5 @@ export interface UserSettings {
   incorrectAction: IncorrectAction
   maxRetries: number
   aiCanOverride: boolean
+  drawMatchThreshold: number
 }
