@@ -20,8 +20,7 @@ export interface Task {
   prompt: string
   options?: string[]
   correctAnswer: string
-  userAnswer?: string
-  isCorrect?: boolean
+  hint?: string
   explanation?: string
 }
 
@@ -32,8 +31,13 @@ export interface DailyStats {
   accuracy: number
 }
 
-export interface ProgressData {
-  labels: string[]
-  accuracy: number[]
-  tasksPerDay: number[]
+export type IncorrectAction = 'show_answer' | 'show_hint' | 'nothing'
+
+export interface UserSettings {
+  level: string
+  aiStyle: string
+  notifications: boolean
+  incorrectAction: IncorrectAction
+  maxRetries: number
+  aiCanOverride: boolean
 }

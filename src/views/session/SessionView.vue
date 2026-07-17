@@ -1,135 +1,264 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useQueryClient } from '@tanstack/vue-query'
-import type { Session, Task } from '@/types'
+import { useSettingsStore } from '@/stores/settings'
+import type { Task } from '@/types'
+import { useStartSession } from '@/requests/session'
 
 const router = useRouter()
-const queryClient = useQueryClient()
+const settings = useSettingsStore()
 
-const session = ref<Session | null>(queryClient.getQueryData(['session']) ?? null)
+const { mutateAsync: startSession, isPending } = useStartSession()
+const sessionId = ref('')
+const queue = ref<Task[]>([])
+const currentIdx = ref(0)
+const answered = ref(false)
+const isCorrect = ref(false)
+const retries = reactive<Record<string, number>>({})
+const sessionsCompleted = ref(0)
 
-if (!session.value) {
-  router.push('/')
+async function start() {
+  const session = await startSession()
+  sessionId.value = session.id
+  queue.value = [...session.tasks]
+  currentIdx.value = 0
+  answered.value = false
 }
 
-const currentTaskIndex = ref(0)
-const answers = ref<Record<string, string>>({})
+const currentTask = () => queue.value[currentIdx.value]
+
+const answer = ref('')
 const selectedMultiple = ref<string[]>([])
-const showResult = ref(false)
 
-const currentTask = computed(() => session.value?.tasks[currentTaskIndex.value])
+function checkAnswer(): boolean {
+  const task = currentTask()
+  if (!task) return false
 
-function handleAnswer() {
-  if (!currentTask.value) return
-
-  if (currentTask.value.type === 'multiple') {
-    answers.value[currentTask.value.id] = selectedMultiple.value.join(',')
+  let userAns: string
+  if (task.type === 'multiple') {
+    userAns = [...selectedMultiple.value].sort().join(',')
+  } else if (task.type === 'choice') {
+    userAns = answer.value
+  } else {
+    userAns = answer.value.trim().toLowerCase()
   }
 
-  currentTaskIndex.value++
+  const correct = task.correctAnswer.toLowerCase()
+  const normalizedUser = userAns.toLowerCase()
+
+  const correctNormalized =
+    task.type === 'multiple'
+      ? [...task.correctAnswer.split(',').map((s) => s.trim())].sort().join(',')
+      : task.correctAnswer.toLowerCase()
+
+  return normalizedUser === correctNormalized
+}
+
+function submitAnswer() {
+  if (answered.value) return
+  isCorrect.value = checkAnswer()
+  answered.value = true
+
+  const task = currentTask()
+  if (!isCorrect.value && task) {
+    const id = task.id
+    retries[id] = (retries[id] ?? 0) + 1
+  }
+}
+
+function nextTask() {
+  const task = currentTask()
+  answered.value = false
+  answer.value = ''
   selectedMultiple.value = []
 
-  if (currentTaskIndex.value >= (session.value?.tasks.length ?? 0)) {
-    showResult.value = true
+  if (task && !isCorrect.value) {
+    const id = task.id
+    const maxRetries = settings.state.maxRetries
+    if (retries[id] != null && retries[id] >= maxRetries) {
+      handledLockedTasks.value.push(task)
+    } else {
+      queue.value.push({ ...task })
+    }
+  }
+
+  currentIdx.value++
+
+  if (currentIdx.value >= queue.value.length) {
+    sessionsCompleted.value++
+    queue.value = []
   }
 }
 
-function toggleOption(option: string) {
-  const idx = selectedMultiple.value.indexOf(option)
-  if (idx >= 0) {
-    selectedMultiple.value.splice(idx, 1)
-  } else {
-    selectedMultiple.value.push(option)
-  }
+const handledLockedTasks = ref<Task[]>([])
+
+function resetAll() {
+  sessionsCompleted.value = 0
+  queue.value = []
+  currentIdx.value = 0
+  answered.value = false
+  for (const key of Object.keys(retries)) delete retries[key]
+  handledLockedTasks.value = []
 }
+
+const showAnswer = computed(
+  () =>
+    settings.state.incorrectAction === 'show_answer' ||
+    (settings.state.incorrectAction === 'show_hint' && !currentTask()?.hint),
+)
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 px-4 pt-8" v-if="currentTask">
-    <div class="text-center">
-      <p class="text-xs text-gray-400">
-        {{ currentTaskIndex + 1 }} / {{ session?.tasks.length }}
+  <div class="flex flex-col gap-4 px-4 pt-8">
+    <!-- Нет сессии — кнопка старта -->
+    <div v-if="queue.length === 0 && !isPending" class="flex flex-col items-center gap-4 pt-16">
+      <p v-if="sessionsCompleted > 0" class="text-center text-lg font-bold">
+        🎉 Занятие {{ sessionsCompleted }} завершено!
       </p>
-      <p class="mt-1 text-2xl font-bold">{{ currentTask.prompt }}</p>
+      <p v-else class="text-center text-lg font-bold">Начни занятие</p>
+      <p v-if="handledLockedTasks.length" class="text-sm text-pink-500">
+        {{ handledLockedTasks.length }} заданий отправлено на повторение
+      </p>
+      <div class="flex gap-3">
+        <button
+          @click="resetAll(); start()"
+          class="rounded-xl bg-pink-500 px-8 py-3 font-bold text-white shadow-lg"
+        >
+          {{ sessionsCompleted > 0 ? 'Ещё занятие' : 'Начать' }}
+        </button>
+        <button
+          v-if="sessionsCompleted > 0"
+          @click="router.push('/')"
+          class="rounded-xl border-2 border-pink-200 px-6 py-3 font-bold dark:border-pink-900"
+        >
+          На главную
+        </button>
+      </div>
     </div>
 
-    <div v-if="currentTask.type === 'choice' && currentTask.options" class="flex flex-col gap-3">
-      <button
-        v-for="opt in currentTask.options"
-        :key="opt"
-        @click="answers[currentTask.id] = opt; handleAnswer()"
-        class="rounded-xl border-2 border-pink-200 p-4 text-lg transition-all active:scale-95 dark:border-pink-900"
-        :class="{ 'border-pink-500 bg-pink-50 dark:bg-pink-950/30': answers[currentTask.id] === opt }"
-      >
-        {{ opt }}
-      </button>
+    <div v-if="isPending" class="pt-16 text-center text-sm text-gray-400">
+      Загрузка заданий...
     </div>
 
-    <div v-else-if="currentTask.type === 'multiple' && currentTask.options" class="flex flex-col gap-3">
-      <button
-        v-for="opt in currentTask.options"
-        :key="opt"
-        @click="toggleOption(opt)"
-        class="rounded-xl border-2 p-4 text-lg transition-all active:scale-95"
-        :class="
-          selectedMultiple.includes(opt)
-            ? 'border-pink-500 bg-pink-50 dark:bg-pink-950/30'
-            : 'border-gray-200 dark:border-gray-800'
-        "
-      >
-        {{ opt }}
-      </button>
-      <button
-        @click="handleAnswer"
-        :disabled="selectedMultiple.length === 0"
-        class="mt-2 rounded-xl bg-pink-500 py-3 font-bold text-white disabled:opacity-50"
-      >
-        Ответить
-      </button>
-    </div>
+    <!-- Активное задание -->
+    <template v-if="queue.length > 0">
+      <div class="text-center">
+        <p class="text-xs text-gray-400">{{ currentIdx + 1 }} / {{ queue.length }}</p>
+        <p class="mt-1 text-xl font-bold">{{ currentTask()?.prompt }}</p>
+        <p v-if="currentTask()?.hint && answered && !isCorrect && settings.state.incorrectAction === 'show_hint'"
+           class="mt-2 text-sm text-pink-400">
+          💡 {{ currentTask()?.hint }}
+        </p>
+      </div>
 
-    <div v-else-if="currentTask.type === 'typing'" class="flex flex-col gap-4">
-      <input
-        v-model="answers[currentTask.id]"
-        @keyup.enter="handleAnswer"
-        placeholder="Введи ответ..."
-        class="rounded-xl border-2 border-pink-200 p-4 text-lg outline-none focus:border-pink-500 dark:border-pink-900 dark:bg-transparent"
-      />
-      <button
-        @click="handleAnswer"
-        :disabled="!answers[currentTask.id]"
-        class="rounded-xl bg-pink-500 py-3 font-bold text-white disabled:opacity-50"
-      >
-        Далее
-      </button>
-    </div>
+      <!-- Choice -->
+      <div v-if="currentTask()?.type === 'choice' && currentTask()?.options" class="flex flex-col gap-3">
+        <button
+          v-for="opt in currentTask()!.options!"
+          :key="opt"
+          :disabled="answered"
+          @click="answer = opt; submitAnswer()"
+          class="rounded-xl border-2 p-4 text-lg transition-all disabled:cursor-not-allowed"
+          :class="[
+            !answered
+              ? 'border-pink-200 dark:border-pink-900 active:scale-95'
+              : answer === opt
+                ? isCorrect
+                  ? 'border-green-400 bg-green-50 dark:bg-green-950/30'
+                  : 'border-red-400 bg-red-50 dark:bg-red-950/30'
+                : opt === currentTask()?.correctAnswer && showAnswer
+                  ? 'border-green-400 bg-green-50/50 dark:bg-green-950/20'
+                  : 'border-gray-200 opacity-50 dark:border-gray-800',
+          ]"
+        >
+          {{ opt }}
+        </button>
+      </div>
 
-    <div v-else-if="currentTask.type === 'translation'" class="flex flex-col gap-4">
-      <input
-        v-model="answers[currentTask.id]"
-        @keyup.enter="handleAnswer"
-        placeholder="Введи перевод..."
-        class="rounded-xl border-2 border-pink-200 p-4 text-lg outline-none focus:border-pink-500 dark:border-pink-900 dark:bg-transparent"
-      />
-      <button
-        @click="handleAnswer"
-        :disabled="!answers[currentTask.id]"
-        class="rounded-xl bg-pink-500 py-3 font-bold text-white disabled:opacity-50"
-      >
-        Далее
-      </button>
-    </div>
-  </div>
+      <!-- Multiple -->
+      <div v-else-if="currentTask()?.type === 'multiple' && currentTask()?.options" class="flex flex-col gap-3">
+        <button
+          v-for="opt in currentTask()!.options!"
+          :key="opt"
+          :disabled="answered"
+          @click="
+            !answered
+              ? selectedMultiple.includes(opt)
+                ? selectedMultiple.splice(selectedMultiple.indexOf(opt), 1)
+                : selectedMultiple.push(opt)
+              : undefined
+          "
+          class="rounded-xl border-2 p-4 text-lg transition-all disabled:cursor-not-allowed"
+          :class="[
+            selectedMultiple.includes(opt)
+              ? 'border-pink-500 bg-pink-50 dark:bg-pink-950/30'
+              : 'border-gray-200 dark:border-gray-800',
+          ]"
+        >
+          {{ opt }}
+        </button>
+        <button
+          v-if="!answered"
+          :disabled="selectedMultiple.length === 0"
+          @click="submitAnswer"
+          class="mt-2 rounded-xl bg-pink-500 py-3 font-bold text-white disabled:opacity-50"
+        >
+          Ответить
+        </button>
+      </div>
 
-  <div v-else-if="showResult" class="flex flex-col items-center gap-4 px-4 pt-16">
-    <p class="text-lg">🎉 Занятие завершено!</p>
-    <p class="text-sm text-gray-500">Проверка ответов пока в mock-режиме</p>
-    <button
-      @click="router.push('/')"
-      class="rounded-xl bg-pink-500 px-8 py-3 font-bold text-white"
-    >
-      На главную
-    </button>
+      <!-- Typing / Translation -->
+      <div v-else class="flex flex-col gap-4">
+        <input
+          v-model="answer"
+          :disabled="answered"
+          @keyup.enter="!answered && submitAnswer()"
+          :placeholder="currentTask()?.type === 'translation' ? 'Введи перевод...' : 'Введи ответ...'"
+          class="rounded-xl border-2 p-4 text-lg outline-none disabled:cursor-not-allowed"
+          :class="
+            answered
+              ? isCorrect
+                ? 'border-green-400 bg-green-50 dark:bg-green-950/30'
+                : 'border-red-400 bg-red-50 dark:bg-red-950/30'
+              : 'border-pink-200 focus:border-pink-500 dark:border-pink-900 dark:bg-transparent'
+          "
+        />
+        <button
+          v-if="!answered"
+          :disabled="!answer.trim()"
+          @click="submitAnswer"
+          class="rounded-xl bg-pink-500 py-3 font-bold text-white disabled:opacity-50"
+        >
+          Проверить
+        </button>
+      </div>
+
+      <!-- Feedback после ответа -->
+      <div v-if="answered" class="space-y-3">
+        <div
+          class="rounded-xl p-3 text-sm"
+          :class="
+            isCorrect
+              ? 'bg-green-100 text-green-800 dark:bg-green-950/30 dark:text-green-300'
+              : 'bg-red-100 text-red-800 dark:bg-red-950/30 dark:text-red-300'
+          "
+        >
+          <p class="font-bold">{{ isCorrect ? '✅ Верно!' : '❌ Неверно' }}</p>
+          <p v-if="!isCorrect && showAnswer && currentTask()" class="mt-1">
+            Правильный ответ: <strong>{{ currentTask()?.correctAnswer }}</strong>
+          </p>
+          <p v-if="currentTask()?.explanation" class="mt-1 text-gray-600 dark:text-gray-400">
+            {{ currentTask()?.explanation }}
+          </p>
+        </div>
+
+        <button
+          @click="nextTask"
+          class="w-full rounded-xl bg-pink-500 py-3 font-bold text-white"
+        >
+          {{ currentIdx < queue.length - 1 ? 'Далее →' : 'Завершить' }}
+        </button>
+      </div>
+    </template>
   </div>
 </template>
